@@ -1,2 +1,2 @@
-# india-air-pollution
-interactive map
+# India Air Pollution Applet
+Interactive map
