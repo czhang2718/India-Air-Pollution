@@ -8,7 +8,16 @@ vars <- c(
   "All" = "all"
 )
 
+axis <- c(
+  "State" = "state",
+  "Agency" = "agency",
+  "Area Type" = "type",
+  "Date of Recording" = "date"
+)
+
 # write.csv(polldat_avg, "pd_avg.csv")
+dat <- read.csv("data.csv", header=TRUE)
+
 polldat = read.csv("temp_pd.csv", header=TRUE)
 polldat_avg <- read.csv("pd_avg.csv", header=TRUE)
 polldat_avg$city = as.character(polldat_avg$city)
