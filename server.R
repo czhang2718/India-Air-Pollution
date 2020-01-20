@@ -2,7 +2,6 @@ library(rsconnect)
 library(shiny)
 library(RColorBrewer)
 library(scales)
-library(lattice)
 library(dplyr)
 library(leaflet)
 library(ggplot2)
@@ -12,14 +11,6 @@ shinyServer(function(input, output) {
 
     output$map <- renderLeaflet({
         leaflet() %>%
-            # map option #2
-            # addProviderTiles(providers$OpenStreetMap) %>%
-
-            # option 3
-            # addTiles(
-            #     urlTemplate="//{s}.tiles.mapbox.com/v3/jcheng.map-5ebohr46/{z}/{x}/{y}.png",
-            #     attribution= "<a href='https://www.mapbox.com/map-feedback/'>Mapbox</a> Basemap  <a href='http://www.tcu.edu'>Texas Christian University</a>"
-            # ) %>%
             addProviderTiles(providers$CartoDB.Positron)%>%
             setView(lat = 20.5937, lng = 78.9629, zoom = 5)
     })
@@ -31,9 +22,8 @@ shinyServer(function(input, output) {
         bounds <- input$map_bounds
         latRng <- range(bounds$north, bounds$south)
         lngRng <- range(bounds$east, bounds$west)
-        print("hi")
-        from<- input$period-180
-        till<- input$period+180
+        from<- input$period-181
+        till<- input$period+181
         print(from)
         subset(polldat_avg,
                lat >= latRng[1] & lat <= latRng[2] &
@@ -56,7 +46,13 @@ shinyServer(function(input, output) {
             }
             
             city_ind = grep(as.character(input$city), polldat_avg$city)
-            data = polldat_avg[city_ind,]
+            if(input$fut==TRUE){
+              data = polldat_avg[city_ind,]
+            }
+            else{
+              data = polldat_avg[as.numeric(polldat_avg$year)<=30,][city_ind,]
+            }
+            
             ggplot()+
                 geom_boxplot(data=data,mapping=aes(date, data[, poll_index]))+
                    labs(x="Date",
@@ -80,8 +76,7 @@ shinyServer(function(input, output) {
             colorData <- dat[[colorBy]]
         }
         
-        # pal <- colorNumeric("inferno", c(0, 30), na.color="#808080", alpha = FALSE)
-        if(colorBy=="spm" || colorBy=="all") rad = 100*colorData
+        if(colorBy=="spm" || colorBy=="all") rad = 80*colorData
         else rad = 1000*colorData
         
         if(input$pollutant=="so2") col = "orange"
@@ -91,31 +86,27 @@ shinyServer(function(input, output) {
         if(input$byPop=="Population") pal = colorBin("plasma", polldat_avg$pop, 
                                                      bins=c(0, 500000, 1000000, 1500000, 2000000, 
                                                             2500000, 18410000))
-        #plasma
-        
-        
-        
-        
+  
         
         if(!input$pollutant=="all" & input$byPop=="Pollutant"){
-            leafletProxy('map', data=dat) %>%
-                clearShapes() %>%
-                clearControls() %>%
-                addCircles(~lng, ~lat, radius= rad, stroke=FALSE,
-                           fillColor=col, fillOpacity=0.3)  %>%
-                addLegend("bottomright", colors=c("orange", "green", "purple"),  
-                          labels=c("Sulfur Dioxide", "Nitrogen Dioxide", "Suspended Particle Matter")
-                          , title="Type of Pollutant")
-                
+            isolate({
+                leafletProxy('map', data=dat) %>%
+                    clearShapes() %>%
+                    clearControls() %>%
+                    addCircles(~lng, ~lat, radius= rad, stroke=FALSE,
+                               fillColor=col, fillOpacity=0.3)  %>%
+                    addLegend("bottomright", colors=c("orange", "green", "purple"),  
+                              labels=c("Sulfur Dioxide", "Nitrogen Dioxide", "Suspended Particle Matter")
+                              , title="Type of Pollutant")
+            })
 
         }
-        
-        
         
         
         else if(!input$pollutant=="all" & input$byPop=="Population"){
             leafletProxy('map', data=dat) %>%
                 clearShapes() %>%
+                # clearPopups() %>%
                 clearControls() %>%
                 addCircles(~lng, ~lat, radius= rad, stroke=FALSE,
                        fillColor=pal(polldat_avg$pop), fillOpacity=0.3) %>%
@@ -160,20 +151,55 @@ shinyServer(function(input, output) {
 
     })
     
-    showPopup <- function(lat, lng) {
+    showPopup <- function(lat, lng, city, map) {
         print(datInBounds())
         print(lat)
-        selected =datInBounds()[datInBounds()$lat==lat,]
-        print(selected)
-        content <- as.character(tagList(
-            tags$h4(selected$city),
-            paste("Latitude: ", lat), 
-            tags$br(),
-            paste("Longitude: ", lng), 
-                        
-                        
-            tags$br() 
-        ))
+        
+        # print(selected)
+        if(map & !input$pollutant =="all"){
+            selected =datInBounds()[datInBounds()$lat==lat,]
+            poll_index = grep(input$pollutant, colnames(polldat_avg))
+            content <- as.character(tagList(
+                tags$h4(city),
+                paste("Latitude: ", lat), 
+                tags$br(),
+                paste("Longitude: ", lng), 
+                tags$br(),
+                paste("Amount of", input$pollutant, ": ", selected[poll_index], " ppm"),
+                
+                tags$br() 
+            ))
+        }
+        
+        
+        else if (map & input$pollutant =="all"){
+            selected =datInBounds()[datInBounds()$lat==lat,]
+            poll_index = grep(input$pollutant, colnames(polldat_avg))
+            content <- as.character(tagList(
+                tags$h4(city),
+                paste("Latitude: ", lat), 
+                tags$br(),
+                paste("Longitude: ", lng), 
+                tags$br(),
+                paste("Amount of SO2: ", selected$so2, " ppm"),
+                
+                tags$br() 
+            ))
+        }
+        
+        
+        else{
+            content <- as.character(tagList(
+                tags$h4(city),
+                paste("Latitude: ", lat), 
+                tags$br(),
+                paste("Longitude: ", lng), 
+                
+                
+                tags$br() 
+            ))
+        }
+       
         leafletProxy("map") %>% addPopups(lng, lat, content)
     }
 
@@ -182,24 +208,53 @@ shinyServer(function(input, output) {
         event <- input$map_shape_click
         if (is.null(event))
             return()
-
+        print("not null")
+        
         isolate({
-            showPopup(event$lat, event$lng)
+            lat = event$lat
+            lng = event$lng
+            cit = datInBounds()$city[datInBounds()$lat==lat]
+            showPopup(lat, lng, cit, TRUE)
         })
     })
     
     
     observe({
+        map <- leafletProxy("map")
         if (input$city == "")
             return()
         isolate({
-            map <- leafletProxy("map")
-            map %>% clearPopups()
+            
             dist <- 1
             lat <- geocities$lat[geocities$city==input$city]
             lng <- geocities$long[geocities$city==input$city]
-            showPopup(lat, lng)
+            
             map %>% fitBounds(lng - dist, lat - dist, lng + dist, lat + dist)
+            showPopup(lat, lng, input$city, FALSE)
         })
+    })
+    
+    
+    output$plot <- renderPlotly({
+      
+      sub = dat[[input$var]]
+      typekey = {}
+      typeval = {}
+      
+      for(i in 1:length(summary(sub))){
+        factor = as.character(unique(sub))[i]
+        print(factor)
+        if(is.na(factor)) next
+        typekey = c(typekey, factor)
+        typeval = c(typeval, length(dat[as.character(sub)==factor, 1]))
+      }
+      
+      
+      plot_ly(
+        x = typekey,
+        y = typeval,
+        name = "Pollution by Type",
+        type = "bar"
+      )
     })
 })
